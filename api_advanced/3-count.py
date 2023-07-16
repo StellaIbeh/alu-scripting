@@ -1,57 +1,51 @@
 #!/usr/bin/python3
-""" Count it! """
-from requests import get
+"""Module for count_words function"""
 
-REDDIT = "https://www.reddit.com/"
-HEADERS = {'user-agent': 'my-app/0.0.1'}
+import json
+import requests
 
 
-def count_words(subreddit, word_list, after="", word_dic={}):
-    if word_dic is None:
-        word_dic = {}
-        for word in word_list:
-            word_dic[word] = 0
+def count_words(subreddit, word_list, after='', hot_list=[]):
+    """Function that queries the Reddit API."""
+    if after == '':
+        hot_list = [0] * len(word_list)
+    url = "https://www.reddit.com/r/{}/hot.json" \
+        .format(subreddit)
+    request = requests.get(url, params={'after': after},
+                           allow_redirects=False,
+                           headers={'User-Agent': 'My User Agent 1.0'})
+    if request.status_code == 200:
+        data = request.json()
 
-    if after is None:
-        word_list = [[key, value] for key, value in word_dic.items()]
-        word_list = sorted(word_list, key=lambda x: (-x[1], x[0]))
-        for w in word_list:
-            if w[1]:
-                print("{}: {}".format(w[0].lower(), w[1]))
-        return None
+        for topic in (data['data']['children']):
+            for word in topic['data']['title'].split():
+                for i in range(len(word_list)):
+                    if word_list[i].lower() == word.lower():
+                        hot_list[i] += 1
 
-    url = REDDIT + "r/{}/hot/.json".format(subreddit)
+        after = data['data']['after']
+        if after is None:
+            save = []
+            for i in range(len(word_list)):
+                for j in range(i + 1, len(word_list)):
+                    if word_list[i].lower() == word_list[j].lower():
+                        save.append(j)
+                        hot_list[i] += hot_list[j]
 
-    params = {
-        'limit': 100,
-        'after': after
-    }
+            for i in range(len(word_list)):
+                for j in range(i, len(word_list)):
+                    if (hot_list[j] > hot_list[i] or
+                            (word_list[i] > word_list[j] and
+                             hot_list[j] == hot_list[i])):
+                        a = hot_list[i]
+                        hot_list[i] = hot_list[j]
+                        hot_list[j] = a
+                        a = word_list[i]
+                        word_list[i] = word_list[j]
+                        word_list[j] = a
 
-    r = get(url, headers=HEADERS, params=params, allow_redirects=False)
-
-    if r.status_code != 200:
-        return None
-
-    try:
-        js = r.json()
-
-    except ValueError:
-        return None
-
-    try:
-
-        data = js.get("data")
-        after = data.get("after")
-        children = data.get("children")
-        for child in children:
-            post = child.get("data")
-            title = post.get("title")
-            lower = [s.lower() for s in title.split(' ')]
-
-            for word, count in word_dic.items():
-                word_dic[word] += lower.count(word.lower())
-
-    except:
-        return None
-
-    count_words(subreddit, word_list, after, word_dic)
+            for i in range(len(word_list)):
+                if (hot_list[i] > 0) and i not in save:
+                    print("{}: {}".format(word_list[i].lower(), hot_list[i]))
+        else:
+            count_words(subreddit, word_list, after, hot_list)
